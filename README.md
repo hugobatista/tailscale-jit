@@ -2,7 +2,7 @@
 
 **Secure, temporary access to Tailscale resources using GitHub Actions.**
 
-Grant just-in-time access to your Tailscale-protected infrastructure with GitHub's built-in security, approvals, and audit trails. No persistent permissions needed.
+Grant just-in-time access to your Tailscale-protected infrastructure with GitHub's built-in security and approvals. No persistent permissions needed.
 
 ## 🚀 Quick Start
 
