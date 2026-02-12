@@ -118,6 +118,12 @@ jobs:
           echo "::add-mask::$TELEGRAM_CHAT_ID"
           ACTOR="${{ github.actor }}"
 
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "::warning::⚠️ Telegram secrets not configured. Skipping notification."
+            echo "::notice::📖 See README.md for instructions on setting up Telegram notifications."
+            exit 0
+          fi
+
           STATUS="${{ job.status }}"
           REVOKED="${{ steps.expire.outputs.revoked }}"
           SKIPPED="${{ steps.expire.outputs.skipped }}"

@@ -87,8 +87,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          
           echo "::add-mask::$TELEGRAM_BOT_TOKEN"
           echo "::add-mask::$TELEGRAM_CHAT_ID"
+
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "::warning::⚠️ Telegram secrets not configured. Skipping notification."
+            echo "::notice::📖 See README.md for instructions on setting up Telegram notifications."
+            exit 0
+          fi
 
           HOSTNAME="${{ steps.source-lookup.outputs.hostname }}"
           SOURCE_DEVICE_ID="${{ steps.source-lookup.outputs.source_device_id }}"
