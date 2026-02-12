@@ -1,0 +1,143 @@
+name: Expire All JIT SSH Access
+on:
+  workflow_dispatch:
+
+jobs:
+  expire-all:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Tailscale OAuth token
+        id: oauth
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_CLIENT_SECRET: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+        run: |
+          TOKEN_RESPONSE=$(curl -s -X POST \
+            "https://api.tailscale.com/api/v2/oauth/token" \
+            -d "client_id=$TS_OAUTH_CLIENT_ID" \
+            -d "client_secret=$TS_OAUTH_CLIENT_SECRET" \
+            -d "scope=devices:core:read devices:posture_attributes")
+          
+          ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          echo "✅ OAuth token obtained"
+      
+      - name: Expire all JIT SSH access
+        id: expire
+        run: |
+          set +e  # Don't exit on errors; handle them manually
+
+          TS_ACCESS_TOKEN="${{ steps.oauth.outputs.access_token }}"
+          
+          echo "🔍 Fetching all devices in tailnet..."
+          DEVICES=$(curl -s -H "Authorization: Bearer $TS_ACCESS_TOKEN" \
+            "https://api.tailscale.com/api/v2/tailnet/-/devices")
+          
+          # Get all device IDs
+          ALL_DEVICE_IDS=$(echo "$DEVICES" | jq -r '.devices[].id')
+          
+          if [ -z "$ALL_DEVICE_IDS" ]; then
+            echo "ℹ️ No devices found in tailnet"
+            exit 0
+          fi
+          
+          REVOKED_COUNT=0
+          FAILED_COUNT=0
+          SKIPPED_COUNT=0
+          REVOKED_DEVICES=""
+          
+          while IFS= read -r DEVICE_ID; do
+            [ -z "$DEVICE_ID" ] && continue
+            
+            # Get hostname for this device
+            HOSTNAME=$(echo "$DEVICES" | jq -r --arg id "$DEVICE_ID" '.devices[] | select(.id == $id) | .hostname' 2>/dev/null || echo "unknown")
+            echo "::add-mask::$HOSTNAME"
+            
+            echo "🔍 Checking device"
+            
+            RESPONSE=$(curl -s -w "%{http_code}" -X DELETE \
+              "https://api.tailscale.com/api/v2/device/$DEVICE_ID/attributes/custom:ssh_jit_granted" \
+              -H "Authorization: Bearer $TS_ACCESS_TOKEN")
+            
+            HTTP_CODE="${RESPONSE: -3}"
+            
+            case "$HTTP_CODE" in
+              200)
+                echo "✅ Revoked"
+                REVOKED_COUNT=$((REVOKED_COUNT + 1))
+                if [ -z "$REVOKED_DEVICES" ]; then
+                  REVOKED_DEVICES="$HOSTNAME"
+                else
+                  REVOKED_DEVICES="$REVOKED_DEVICES, $HOSTNAME"
+                fi
+                echo "::add-mask::$REVOKED_DEVICES"
+                ;;
+              404)
+                echo "ℹ️ Skipped (attribute not present)"
+                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                ;;
+              *)
+                echo "❌ Failed to revoke (HTTP $HTTP_CODE)"
+                FAILED_COUNT=$((FAILED_COUNT + 1))
+                ;;
+            esac
+          done <<< "$ALL_DEVICE_IDS"
+          
+          echo ""
+          echo "📊 Summary:"
+          echo "   Revoked: $REVOKED_COUNT"
+          echo "   Skipped: $SKIPPED_COUNT"
+          echo "   Failed: $FAILED_COUNT"
+          
+          echo "revoked=$REVOKED_COUNT" >> $GITHUB_OUTPUT
+          echo "skipped=$SKIPPED_COUNT" >> $GITHUB_OUTPUT
+          echo "failed=$FAILED_COUNT" >> $GITHUB_OUTPUT
+          echo "revoked_devices=$REVOKED_DEVICES" >> $GITHUB_OUTPUT
+          
+          if [ "$FAILED_COUNT" -gt 0 ]; then
+            echo "::error::❌ Failed to revoke JIT SSH access from $FAILED_COUNT device(s)"
+            exit 1
+          fi
+          
+          if [ "$REVOKED_COUNT" -eq 0 ]; then
+            echo "::notice::ℹ️ No active JIT SSH access found to revoke"
+          else
+            echo "::notice::✅ Successfully revoked JIT SSH access from $REVOKED_COUNT device(s): $REVOKED_DEVICES"
+          fi
+          
+          exit 0
+      
+      - name: Send Telegram notification
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "::add-mask::$TELEGRAM_BOT_TOKEN"
+          echo "::add-mask::$TELEGRAM_CHAT_ID"
+          ACTOR="${{ github.actor }}"
+
+          STATUS="${{ job.status }}"
+          REVOKED="${{ steps.expire.outputs.revoked }}"
+          SKIPPED="${{ steps.expire.outputs.skipped }}"
+          FAILED="${{ steps.expire.outputs.failed }}"
+          REVOKED_DEVICES="${{ steps.expire.outputs.revoked_devices }}"
+          echo "::add-mask::$REVOKED_DEVICES"
+          
+          if [ -z "$REVOKED_DEVICES" ]; then
+            DEVICES_LINE=""
+          else
+            DEVICES_LINE="%0A📋 Devices: <code>$REVOKED_DEVICES</code>"
+          fi
+          
+          if [ "$STATUS" = "success" ]; then
+            MESSAGE='✅ JIT SSH Bulk Revocation <b>COMPLETE</b>%0A👤 <code>'$ACTOR'</code>%0A✅ Revoked: '$REVOKED'%0Aⓘ Skipped: '$SKIPPED'%0A❌ Failed: '$FAILED''$DEVICES_LINE'%0A🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          else
+            MESSAGE='❌ JIT SSH Bulk Revocation <b>FAILED</b>%0A👤 <code>'$ACTOR'</code>%0A✅ Revoked: '$REVOKED'%0Aⓘ Skipped: '$SKIPPED'%0A❌ Failed: '$FAILED''$DEVICES_LINE'%0A🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          fi
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d chat_id="$TELEGRAM_CHAT_ID" \
+            -d "parse_mode=HTML" \
+            -d text="$MESSAGE" 2>&1)
+          echo "::add-mask::$RESPONSE"

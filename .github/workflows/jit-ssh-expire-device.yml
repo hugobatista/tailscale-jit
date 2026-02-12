@@ -1,0 +1,109 @@
+name: Expire JIT SSH Access (Specific Device)
+on:
+  workflow_dispatch:
+    inputs:
+      source_hostname:
+        description: 'Source device hostname (e.g., john-laptop)'
+        required: true
+
+jobs:
+  expire-device:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Tailscale OAuth token
+        id: oauth
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_CLIENT_SECRET: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+        run: |
+          TOKEN_RESPONSE=$(curl -s -X POST \
+            "https://api.tailscale.com/api/v2/oauth/token" \
+            -d "client_id=$TS_OAUTH_CLIENT_ID" \
+            -d "client_secret=$TS_OAUTH_CLIENT_SECRET" \
+            -d "scope=devices:core:read devices:posture_attributes")
+          
+          ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "access_token=$ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          echo "✅ OAuth token obtained"
+      
+      - name: Lookup source device ID by hostname
+        id: source-lookup
+        run: |
+          # Read hostname directly from the event payload
+          # this ensures we don't output it in logs accidentally before masking
+          HOSTNAME=$(jq -r '.inputs.source_hostname' "$GITHUB_EVENT_PATH")
+          TS_ACCESS_TOKEN="${{ steps.oauth.outputs.access_token }}"
+
+          # Mask hostname in logs
+          echo "::add-mask::$HOSTNAME"
+          echo "hostname=$HOSTNAME" >> $GITHUB_OUTPUT
+
+          DEVICES=$(curl -s -H "Authorization: Bearer $TS_ACCESS_TOKEN" \
+            "https://api.tailscale.com/api/v2/tailnet/-/devices")
+          
+          SOURCE_DEVICE_ID=$(echo "$DEVICES" | jq -r --arg hostname "$HOSTNAME" \
+            '.devices[] | select(.hostname == $hostname) | .id')
+          
+          if [ "$SOURCE_DEVICE_ID" = "null" ] || [ -z "$SOURCE_DEVICE_ID" ]; then
+            echo "::error::❌ Device not found. Could not add JIT SSH attribute."
+            exit 1
+          fi
+          
+          # Mask device ID in logs
+          echo "::add-mask::$SOURCE_DEVICE_ID"
+          echo "source_device_id=$SOURCE_DEVICE_ID" >> $GITHUB_OUTPUT
+          echo "✅ Found device ID"
+      
+      - name: Expire JIT SSH access
+        id: revoke
+        run: |
+          ATTRIBUTE="custom:ssh_jit_granted"
+          TS_ACCESS_TOKEN="${{ steps.oauth.outputs.access_token }}"
+          SOURCE_DEVICE_ID="${{ steps.source-lookup.outputs.source_device_id }}"
+
+          
+          
+          RESPONSE=$(curl -s -w "%{http_code}" -X DELETE \
+            "https://api.tailscale.com/api/v2/device/$SOURCE_DEVICE_ID/attributes/$ATTRIBUTE" \
+            -H "Authorization: Bearer $TS_ACCESS_TOKEN")
+          
+          HTTP_CODE="${RESPONSE: -3}"
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ JIT SSH access REVOKED!"
+            echo "success=true" >> $GITHUB_OUTPUT
+          else
+            echo "::error::❌ Failed to revoke (HTTP $HTTP_CODE)"
+            RESPONSE_BODY="${RESPONSE:0:${#RESPONSE}-3}"
+            echo "Response: $RESPONSE_BODY"
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+      
+      - name: Send Telegram notification
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "::add-mask::$TELEGRAM_BOT_TOKEN"
+          echo "::add-mask::$TELEGRAM_CHAT_ID"
+
+          HOSTNAME="${{ steps.source-lookup.outputs.hostname }}"
+          SOURCE_DEVICE_ID="${{ steps.source-lookup.outputs.source_device_id }}"
+
+          ACTOR="${{ github.actor }}"
+
+          STATUS="${{ job.status }}"
+          REVOKE_SUCCESS="${{ steps.revoke.outputs.success }}"
+          if [ "$STATUS" = "success" ] && [ "$REVOKE_SUCCESS" = "true" ]; then
+            MESSAGE='✅ JIT SSH Access <b>REVOKED</b>%0A👤 <code>'$ACTOR'</code>%0A💻 <code>'$HOSTNAME' ('$SOURCE_DEVICE_ID')</code>%0A🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          else
+            MESSAGE='❌ Revocation <b>FAILED</b>%0A👤 <code>'$ACTOR'</code>%0A💻 <code>'$HOSTNAME' ('$SOURCE_DEVICE_ID')</code>%0A🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          fi
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d chat_id="$TELEGRAM_CHAT_ID" \
+            -d "parse_mode=HTML" \
+            -d text="$MESSAGE" 2>&1)
+          echo "::add-mask::$RESPONSE"
