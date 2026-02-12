@@ -53,9 +53,9 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 
 | Workflow | File | Description |
 |----------|------|-------------|
-| JIT SSH Access | `jit-ssh.yml` | Grants temporary SSH access to a specific device by setting the `custom:ssh_jit_granted` attribute with expiration. |
-| Expire JIT SSH Access (Specific Device) | `jit-ssh-expire-device.yml` | Revokes JIT access from a specific device by removing the `custom:ssh_jit_granted` attribute. |
-| Expire All JIT SSH Access | `jit-ssh-expire-all.yml` | Revokes JIT access from all devices in the tailnet by removing the `custom:ssh_jit_granted` attribute where present.
+| JIT SSH Access | [.github/workflows/jit-ssh.yml](.github/workflows/jit-ssh.yml) | Grants temporary SSH access to a specific device by setting the `custom:ssh_jit_granted` attribute with expiration. |
+| Expire JIT SSH Access (Specific Device) | [.github/workflows/jit-ssh-expire-device.yml](.github/workflows/jit-ssh-expire-device.yml) | Revokes JIT access from a specific device by removing the `custom:ssh_jit_granted` attribute. |
+| Expire All JIT SSH Access | [.github/workflows/jit-ssh-expire-all.yml](.github/workflows/jit-ssh-expire-all.yml) | Revokes JIT access from all devices in the tailnet by removing the `custom:ssh_jit_granted` attribute where present.
 
 ## 🛠️ Setup
 
