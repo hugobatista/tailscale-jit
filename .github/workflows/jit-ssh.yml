@@ -49,8 +49,11 @@ jobs:
             "https://api.tailscale.com/api/v2/tailnet/-/devices")
           
           SOURCE_DEVICE_ID=$(echo "$DEVICES" | jq -r --arg hostname "$HOSTNAME" \
-            '.devices[] | select(.hostname == $hostname) | .id')
-          
+            '.devices[] | select(
+              (.hostname == $hostname) or
+              (.name | split(".")[0] == $hostname)
+            ) | .id')
+
           if [ "$SOURCE_DEVICE_ID" = "null" ] || [ -z "$SOURCE_DEVICE_ID" ]; then
             echo "::error::❌ Device not found. Could not add JIT SSH attribute."
             exit 1
