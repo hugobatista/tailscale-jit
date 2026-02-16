@@ -124,6 +124,50 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 - **Single Device**: Use "Expire JIT SSH Access (Specific Device)"
 - **All Devices**: Use "Expire All JIT SSH Access"
 
+## 🧪 Running Workflows Locally
+
+Test and debug workflows locally using [act](https://nektosact.com/), which simulates the GitHub Actions environment on your machine.
+
+### Prerequisites
+- [Install act](https://nektosact.com/installation/index.html)
+- Create a `.secrets` file in your repository root with your secrets:
+  ```
+  TS_OAUTH_CLIENT_ID=your_client_id
+  TS_OAUTH_CLIENT_SECRET=your_client_secret
+  TELEGRAM_BOT_TOKEN=your_token (optional)
+  TELEGRAM_CHAT_ID=your_chat_id (optional)
+  ```
+
+### Running a Workflow
+
+Use the `event.json` file to simulate workflow inputs:
+
+```bash
+act workflow_dispatch \
+  --eventpath event.json \
+  --secret-file .secrets \
+  -j grant-access \
+  -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
+```
+
+**Parameters:**
+- `workflow_dispatch`: Trigger type (matches the workflow's `on: workflow_dispatch`)
+- `--eventpath event.json`: Path to file containing workflow inputs
+- `--secret-file .secrets`: Path to file with repository secrets
+- `-j grant-access`: Job ID to run (find in workflow YAML)
+- `-P ubuntu-latest=...`: Container image for the runner
+
+### Example event.json
+
+```json
+{
+  "inputs": {
+    "device_hostname": "my-server",
+    "duration_hours": "4"
+  }
+}
+```
+
 ## 🎨 Customization
 
 - **Add Approvals**: Enable GitHub environment protection rules
