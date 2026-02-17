@@ -3,17 +3,17 @@ on:
   workflow_dispatch:
     inputs:
       access_type:
-        description: 'Custom attribute name (without "custom:" prefix) or "all" to revoke all JIT attributes'
+        description: 'Access Type'
         default: 'ssh'
         required: true
         type: choice
         # NOTE: if you update this list, make sure to also update the validation logic in the workflow and the README documentation
         options:
+          - all
           - ssh
           - arr
           - monitoring
           - admin
-          - all
 
 jobs:
   expire-all:

@@ -11,7 +11,7 @@ on:
         default: '30'
         required: false
       access_type:
-        description: 'Custom attribute name (without "custom:" prefix)'
+        description: 'Access Type'
         default: 'ssh'
         required: true
         type: choice
