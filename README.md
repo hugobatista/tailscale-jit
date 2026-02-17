@@ -174,35 +174,33 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 
 Test and debug workflows locally using [act](https://nektosact.com/), which simulates the GitHub Actions environment on your machine.
 
-### Through the run-act.sh script (recommended - avoids the need to store secrets in plaintext files)
+### Using vaultsh + act (recommended)
 
-Run the run-act.sh script, which will:
-- install act if not already installed
-- store the secrets in the local secret store (using secret-tool)
-- run the workflow using act, passing the stored secrets as input
+Use [vaultsh](https://go.hugobatista.com/gh/vaultsh) to load secrets from your system keyring without storing plaintext files on disk.
 
-note: don't forget to mark the script as executable using `chmod +x run-act.sh`.
-
-when prompted for the secrets, you can paste the content of the .secrets file, which should be in the following format:
-```
-TS_OAUTH_CLIENT_ID=your_client_id
-TS_OAUTH_CLIENT_SECRET=your_client_secret 
-TELEGRAM_BOT_TOKEN=your_token (optional)
-TELEGRAM_CHAT_ID=your_chat_id (optional)
-```
+1. Install vaultsh (see the vaultsh README)
+2. Run act through vaultsh using file descriptor mode
 
 Example:
 ```bash
-./run-act.sh workflow_dispatch \
-  --eventpath event.json \
+vaultsh ./bin/act workflow_dispatch \
+  --secret-file @SECRETS@ \
+  --eventpath event-grant.json \
   -j grant-access \
   -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
 ```
 
-note: the secrets are stored in the local secret store using the projectname-secrets (or the provided --app <appname>)You can check the stored secrets using the command `secret-tool lookup app <appname>` and delete them using `secret-tool clear app <appname>`
+When prompted the first time, paste your secrets in this format:
+```
+TS_OAUTH_CLIENT_ID=your_client_id
+TS_OAUTH_CLIENT_SECRET=your_client_secret
+TELEGRAM_BOT_TOKEN=your_token (optional)
+TELEGRAM_CHAT_ID=your_chat_id (optional)
+```
 
+vaultsh stores the secrets in your local keyring. You can check stored entries with `secret-tool lookup app <appname>` and delete them with `secret-tool clear app <appname>`.
 
-### using act directly
+### Using act directly (stores secrets on disk)
 
 - [Install act](https://nektosact.com/installation/index.html)
 - Create a `.secrets` file in your repository root with your secrets:
@@ -213,11 +211,11 @@ note: the secrets are stored in the local secret store using the projectname-sec
   TELEGRAM_CHAT_ID=your_chat_id (optional)
   ```
 
-Use the `event.json` file to simulate workflow inputs:
+Use the `event-grant.json` file to simulate workflow inputs:
 
 ```bash
 act workflow_dispatch \
-  --eventpath event.json \
+  --eventpath event-grant.json \
   --secret-file .secrets \
   -j grant-access \
   -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
