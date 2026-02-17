@@ -11,21 +11,45 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 3. **Configure secrets** for Tailscale API access
 4. **Trigger access requests** via GitHub Actions
 
-### Example ACL Configuration
+### Example Grants Configuration
 
 ```json
 {
+  // Define postures that check for custom attributes set by GitHub Actions workflows
   "postures": {
-    "posture:jit_ssh_granted": ["custom:ssh_jit_granted == true"]
+    "posture:jit_ssh_granted": ["custom:ssh_jit_granted == true"],
+    "posture:jit_arr_granted": ["custom:arr_jit_granted == true"],
+    "posture:jit_monitoring_granted": ["custom:monitoring_jit_granted == true"],
+    "posture:jit_admin_granted": ["custom:admin_jit_granted == true"]
   },
-  "acls": [
+  "grants": [
     {
-      "action": "accept",
+      // example of using posture-based grant for SSH access - can be applied to any service by defining appropriate postures and grants
       "src": ["autogroup:member"],
       "srcPosture": ["posture:jit_ssh_granted"],
       "dst": ["tag:production-server"],
-      "proto": "tcp",
-      "dst": ["tag:production-server:22"]
+      "ip": ["tcp:22"]
+    },
+    {
+      // example of using the same pattern for access to a web service, like the arr suite - can be applied to any service by defining appropriate postures and grants
+      "src": ["autogroup:member"],
+      "srcPosture": ["posture:jit_arr_granted"],
+      "dst": ["tag:arr-server"],
+      "ip": ["tcp:80", "tcp:443", "tcp:6767"]
+    },
+    {
+      // example of using the same pattern for monitoring access - can be applied to any service by defining appropriate postures and grants
+      "src": ["autogroup:member"],
+      "srcPosture": ["posture:jit_monitoring_granted"],
+      "dst": ["tag:monitoring-server"],
+      "ip": ["tcp:9090"]
+    },
+    {
+      // example of full access grant - use with caution!
+      "src": ["autogroup:member"],
+      "srcPosture": ["posture:jit_admin_granted"],
+      "dst": ["tag:monitoring-server", "tag:production-server", "tag:arr-server"],
+      "ip": ["*"]
     }
   ]
 }
@@ -44,18 +68,19 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 
 ## 🔄 How It Works
 
-1. **Posture Definition**: Define Tailscale postures that check for custom attributes (e.g., `custom:ssh_jit_granted`)
-2. **ACL Rules**: Use `srcPosture` in ACLs to restrict access to devices with the required attributes
+1. **Posture Definition**: Define Tailscale postures that check for custom attributes (e.g., `custom:ssh_jit_granted`, `custom:arr_jit_granted`, `custom:monitoring_jit_granted`, `custom:admin_jit_granted`)
+2. **Grants**: Use `srcPosture` in grants to restrict access to devices with the required attributes
 3. **GitHub Actions**: Workflows use Tailscale API to set/remove custom attributes on devices
 4. **JIT Access**: When attribute is present, posture condition is met, granting access
+5. **Access Types**: Choose from ssh, arr, monitoring, admin, or all access types. Use "all" to revoke all JIT attributes simultaneously.
 
 ## 📊 Workflows
 
 | Workflow | File | Description |
 |----------|------|-------------|
-| JIT SSH Access | [.github/workflows/jit-ssh.yml](.github/workflows/jit-ssh.yml) | Grants temporary SSH access to a specific device by setting the `custom:ssh_jit_granted` attribute with expiration. |
-| Expire JIT SSH Access (Specific Device) | [.github/workflows/jit-ssh-expire-device.yml](.github/workflows/jit-ssh-expire-device.yml) | Revokes JIT access from a specific device by removing the `custom:ssh_jit_granted` attribute. |
-| Expire All JIT SSH Access | [.github/workflows/jit-ssh-expire-all.yml](.github/workflows/jit-ssh-expire-all.yml) | Revokes JIT access from all devices in the tailnet by removing the `custom:ssh_jit_granted` attribute where present.
+| JIT Access | [.github/workflows/jit.yml](.github/workflows/jit.yml) | Grants temporary access (ssh, arr, monitoring, or admin) to a specific device by setting the corresponding custom attribute with expiration. |
+| Expire JIT Access (Specific Device) | [.github/workflows/jit-expire-device.yml](.github/workflows/jit-expire-device.yml) | Revokes JIT access (ssh, arr, monitoring, admin, or all) from a specific device by removing the corresponding custom attribute(s). Use "all" to revoke all JIT attributes at once. |
+| Expire All JIT Access | [.github/workflows/jit-expire-all.yml](.github/workflows/jit-expire-all.yml) | Revokes JIT access (ssh, arr, monitoring, admin, or all) from all devices in the tailnet by removing the corresponding custom attribute(s) where present. Use "all" to revoke all JIT attributes at once.
 
 ## 🛠️ Setup
 
@@ -72,22 +97,39 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 2. **Define Postures** in your tailnet policy file:
    ```json
    "postures": {
-     "posture:jit_ssh_granted": [
-       "custom:ssh_jit_granted == true"
-     ]
+     "posture:jit_ssh_granted": ["custom:ssh_jit_granted == true"],
+     "posture:jit_arr_granted": ["custom:arr_jit_granted == true"],
+     "posture:jit_monitoring_granted": ["custom:monitoring_jit_granted == true"],
+     "posture:jit_admin_granted": ["custom:admin_jit_granted == true"]
    }
    ```
 
-3. **Configure ACLs** to use posture-based access:
+3. **Configure Grants** to use posture-based access:
    ```json
-   "acls": [
+   "grants": [
      {
-       "action": "accept",
        "src": ["autogroup:member"],
        "srcPosture": ["posture:jit_ssh_granted"],
        "dst": ["tag:secure-resource"],
-       "proto": "tcp",
-       "dst": ["tag:secure-resource:22"]
+       "ip": ["tcp:22"]
+     },
+     {
+       "src": ["autogroup:member"],
+       "srcPosture": ["posture:jit_arr_granted"],
+       "dst": ["tag:arr-server"],
+       "ip": ["tcp:80", "tcp:443", "tcp:6767"]
+     },
+     {
+       "src": ["autogroup:member"],
+       "srcPosture": ["posture:jit_monitoring_granted"],
+       "dst": ["tag:monitoring-server"],
+       "ip": ["tcp:9090"]
+     },
+     {
+       "src": ["autogroup:member"],
+       "srcPosture": ["posture:jit_admin_granted"],
+       "dst": ["tag:monitoring-server", "tag:production-server", "tag:arr-server"],
+       "ip": ["*"]
      }
    ]
    ```
@@ -116,13 +158,17 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 ## 📋 Usage
 
 ### Request Access
-- Go to **Actions** → **JIT SSH Access**
-- Enter device hostname and duration
+- Go to **Actions** → **JIT Access**
+- Enter device hostname, duration, and access type (ssh, arr, monitoring, or admin)
 - Click **Run workflow**
 
 ### Revoke Access
-- **Single Device**: Use "Expire JIT SSH Access (Specific Device)"
-- **All Devices**: Use "Expire All JIT SSH Access"
+- **Single Device**: Use "Expire JIT Access (Specific Device)"
+  - Specify device hostname and access type (ssh, arr, monitoring, admin, or all)
+  - Use "all" to revoke all JIT attributes from the device at once
+- **All Devices**: Use "Expire All JIT Access"
+  - Specify access type (ssh, arr, monitoring, admin, or all)
+  - Use "all" to revoke all JIT attributes from all devices at once
 
 ## 🧪 Running Workflows Locally
 
@@ -162,8 +208,9 @@ act workflow_dispatch \
 ```json
 {
   "inputs": {
-    "device_hostname": "my-server",
-    "duration_hours": "4"
+    "source_hostname": "my-server",
+    "duration_minutes": "30",
+    "access_type": "ssh"
   }
 }
 ```

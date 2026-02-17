@@ -1,4 +1,4 @@
-name: JIT SSH Access
+name: JIT Access
 
 on:
   workflow_dispatch:
@@ -10,11 +10,36 @@ on:
         description: 'Duration in minutes'
         default: '30'
         required: false
+      access_type:
+        description: 'Custom attribute name (without "custom:" prefix)'
+        default: 'ssh'
+        required: true
+        type: choice
+        # NOTE: if you update this list, make sure to also update the validation logic in the workflow and the README documentation
+        options:
+          - ssh
+          - arr
+          - monitoring
+          - admin
 
 jobs:
   grant-access:
     runs-on: ubuntu-latest
     steps:
+
+      - name: Validate access type and map it into full attribute name
+        id: validate-access-type
+        run: |
+
+          # validate access type is on the allowed list
+          # NOTE: if you updated the list of access types in the workflow_dispatch inputs, make sure to also update this validation logic and the README documentation
+          if [[ ! "ssh arr monitoring admin" =~ "${{ github.event.inputs.access_type }}" ]]; then
+            echo "::error::Invalid access type. Must be one of: ssh, arr, monitoring, admin."
+            exit 1
+          fi
+          ATTRIBUTE="custom:${{ github.event.inputs.access_type }}_jit_granted"
+          echo "attribute=$ATTRIBUTE" >> $GITHUB_OUTPUT
+          echo "✅ Access type to be provisioned: $ATTRIBUTE"
 
       - name: Get Tailscale OAuth token
         id: oauth
@@ -55,7 +80,7 @@ jobs:
             ) | .id')
 
           if [ "$SOURCE_DEVICE_ID" = "null" ] || [ -z "$SOURCE_DEVICE_ID" ]; then
-            echo "::error::❌ Device not found. Could not add JIT SSH attribute."
+            echo "::error::❌ Device not found. Could not add JIT attribute."
             exit 1
           fi
           
@@ -64,14 +89,13 @@ jobs:
           echo "source_device_id=$SOURCE_DEVICE_ID" >> $GITHUB_OUTPUT
           echo "✅ Found device ID"
       
-      - name: Add JIT SSH attribute to source device
+      - name: Add JIT attribute to source device
         id: grant
         run: |
           DURATION="${{ github.event.inputs.duration_minutes || 30 }}"
-          ATTRIBUTE="custom:ssh_jit_granted"
           TS_ACCESS_TOKEN="${{ steps.oauth.outputs.access_token }}"
           SOURCE_DEVICE_ID="${{ steps.source-lookup.outputs.source_device_id }}"
-
+          ATTRIBUTE="${{ steps.validate-access-type.outputs.attribute }}"
           EXPIRY=$(date -u -d "+${DURATION} minutes" --iso-8601=seconds)
           
           RESPONSE=$(curl -s -w "%{http_code}" -X POST \
@@ -115,13 +139,14 @@ jobs:
           SOURCE_DEVICE_ID="${{ steps.source-lookup.outputs.source_device_id }}"
 
           ACTOR="${{ github.actor }}"
+          ACCESS_TYPE="${{ github.event.inputs.access_type }}"
 
           STATUS="${{ job.status }}"
           EXPIRY="${{ steps.grant.outputs.expiry }}"
           if [ "$STATUS" = "success" ] && [ ! -z "$EXPIRY" ]; then
-            MESSAGE='✅ JIT SSH Access <b>GRANTED</b>%0A👤 <code>'$ACTOR'</code>%0A💻 <code>'$HOSTNAME' ('$SOURCE_DEVICE_ID')</code>%0A⏰ Expires: <code>'$EXPIRY'</code>%0A⚠️ <a href="${{ github.server_url }}/${{ github.repository }}/actions/workflows/jit-ssh-expire-all.yml">Revoke All</a>%0A🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            MESSAGE='✅ JIT Access <b>GRANTED</b>%0A👤 <code>'$ACTOR'</code>%0A🔐 <code>'$ACCESS_TYPE'</code>%0A💻 <code>'$HOSTNAME' ('$SOURCE_DEVICE_ID')</code>%0A⏰ Expires: <code>'$EXPIRY'</code>%0A⚠️ <a href="${{ github.server_url }}/${{ github.repository }}/actions/workflows/jit-expire-all.yml">Revoke All</a>%0A🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
           else
-            MESSAGE='❌ Workflow <b>FAILED</b>%0A👤 <code>'$ACTOR'</code>%0A💻 <code>'$HOSTNAME' ('$SOURCE_DEVICE_ID')</code>%0A🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            MESSAGE='❌ Workflow <b>FAILED</b>%0A👤 <code>'$ACTOR'</code>%0A🔐 <code>'$ACCESS_TYPE'</code>%0A💻 <code>'$HOSTNAME' ('$SOURCE_DEVICE_ID')</code>%0A🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
           fi
 
           RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
