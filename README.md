@@ -174,7 +174,36 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 
 Test and debug workflows locally using [act](https://nektosact.com/), which simulates the GitHub Actions environment on your machine.
 
-### Prerequisites
+### Through the run-act.sh script (recommended - avoids the need to store secrets in plaintext files)
+
+Run the run-act.sh script, which will:
+- install act if not already installed
+- store the secrets in the local secret store (using secret-tool)
+- run the workflow using act, passing the stored secrets as input
+
+note: don't forget to mark the script as executable using `chmod +x run-act.sh`.
+
+when prompted for the secrets, you can paste the content of the .secrets file, which should be in the following format:
+```
+TS_OAUTH_CLIENT_ID=your_client_id
+TS_OAUTH_CLIENT_SECRET=your_client_secret 
+TELEGRAM_BOT_TOKEN=your_token (optional)
+TELEGRAM_CHAT_ID=your_chat_id (optional)
+```
+
+Example:
+```bash
+./run-act.sh workflow_dispatch \
+  --eventpath event.json \
+  -j grant-access \
+  -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
+```
+
+note: the secrets are stored in the local secret store using the projectname-secrets (or the provided --app <appname>)You can check the stored secrets using the command `secret-tool lookup app <appname>` and delete them using `secret-tool clear app <appname>`
+
+
+### using act directly
+
 - [Install act](https://nektosact.com/installation/index.html)
 - Create a `.secrets` file in your repository root with your secrets:
   ```
@@ -183,8 +212,6 @@ Test and debug workflows locally using [act](https://nektosact.com/), which simu
   TELEGRAM_BOT_TOKEN=your_token (optional)
   TELEGRAM_CHAT_ID=your_chat_id (optional)
   ```
-
-### Running a Workflow
 
 Use the `event.json` file to simulate workflow inputs:
 
@@ -202,6 +229,16 @@ act workflow_dispatch \
 - `--secret-file .secrets`: Path to file with repository secrets
 - `-j grant-access`: Job ID to run (find in workflow YAML)
 - `-P ubuntu-latest=...`: Container image for the runner
+
+
+### Example .secrets file
+
+```
+TS_OAUTH_CLIENT_ID=your_client_id
+TS_OAUTH_CLIENT_SECRET=your_client_secret
+TELEGRAM_BOT_TOKEN=your_token (optional)
+TELEGRAM_CHAT_ID=your_chat_id (optional)
+```
 
 ### Example event.json
 
