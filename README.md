@@ -174,16 +174,16 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 
 Test and debug workflows locally using [act](https://nektosact.com/), which simulates the GitHub Actions environment on your machine.
 
-### Using vaultsh + act (recommended)
+### Using secret-tool-run + act (recommended)
 
-Use [vaultsh](https://go.hugobatista.com/gh/vaultsh) to load secrets from your system keyring without storing plaintext files on disk.
+Use [secret-tool-run](https://go.hugobatista.com/gh/secret-tool-run) to load secrets from your system keyring without storing plaintext files on disk.
 
-1. Install vaultsh (see the vaultsh README)
-2. Run act through vaultsh using file descriptor mode
+1. Install secret-tool-run (see the secret-tool-run README)
+2. Run act through secret-tool-run using file descriptor mode
 
 Example:
 ```bash
-vaultsh ./bin/act workflow_dispatch \
+secret-tool-run ./bin/act workflow_dispatch \
   --secret-file @SECRETS@ \
   --eventpath event-grant.json \
   -j grant-access \
@@ -198,7 +198,7 @@ TELEGRAM_BOT_TOKEN=your_token (optional)
 TELEGRAM_CHAT_ID=your_chat_id (optional)
 ```
 
-vaultsh stores the secrets in your local keyring. You can check stored entries with `secret-tool lookup app <appname>` and delete them with `secret-tool clear app <appname>`.
+secret-tool-run stores the secrets in your local keyring. You can check stored entries with `secret-tool lookup app <appname>` and delete them with `secret-tool clear app <appname>`.
 
 ### Using act directly (stores secrets on disk)
 
