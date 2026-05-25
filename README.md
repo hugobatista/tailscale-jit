@@ -174,16 +174,16 @@ Grant just-in-time access to your Tailscale-protected infrastructure with GitHub
 
 Test and debug workflows locally using [act](https://nektosact.com/), which simulates the GitHub Actions environment on your machine.
 
-### Using secret-tool-run + act (recommended)
+### Using kleys + act (recommended)
 
-Use [secret-tool-run](https://go.hugobatista.com/gh/secret-tool-run) to load secrets from your system keyring without storing plaintext files on disk.
+Use [kleys](https://go.hugobatista.com/gh/kleys) to load secrets from your system keyring without storing plaintext files on disk.
 
-1. Install secret-tool-run (see the secret-tool-run README)
-2. Run act through secret-tool-run using file descriptor mode
+1. Install kleys: `pip install kleys` (or `uv tool install kleys`)
+2. Run act through kleys using file descriptor mode
 
 Example:
 ```bash
-secret-tool-run ./bin/act workflow_dispatch \
+kleys ./bin/act workflow_dispatch \
   --secret-file @SECRETS@ \
   --eventpath event-grant.json \
   -j grant-access \
@@ -198,7 +198,7 @@ TELEGRAM_BOT_TOKEN=your_token (optional)
 TELEGRAM_CHAT_ID=your_chat_id (optional)
 ```
 
-secret-tool-run stores the secrets in your local keyring. You can check stored entries with `secret-tool lookup app <appname>` and delete them with `secret-tool clear app <appname>`.
+kleys stores the secrets in your local keyring. You can check stored entries with `kleys show --key <key>` and delete them with `kleys clear --key <key>`.
 
 ### Using act directly (stores secrets on disk)
 
