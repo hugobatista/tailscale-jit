@@ -1,4 +1,4 @@
-# Tailscale JIT Access 🛡️
+# Tailscale JIT Access ⏱️
 
 **Secure, temporary access to Tailscale resources using GitHub Actions.**
 
